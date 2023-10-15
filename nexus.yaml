@@ -1,0 +1,125 @@
+- hosts: nexus
+  remote_user: sater
+  become: yes
+  tasks:
+    - name: update apt repo
+      apt:
+        update_cache: yes
+
+    - name: install wget
+      apt:
+        name: wget
+        state: present
+
+    - name: install openjdk 1.8
+      apt:
+        name: openjdk-8-jdk
+        state: present
+
+    - name: create user nexus
+      user:
+        name: nexus
+        shell: /bin/bash
+        home: /home/nexus
+        createhome: yes
+
+    - name: create directory /app
+      file:
+        path: /home/nexus/app
+        state: directory
+
+
+    - name: downlaod nexus tar file
+      get_url:
+        url: https://download.sonatype.com/nexus/3/latest-unix.tar.gz
+        dest: /home/nexus/app/nexus.tar.gz
+          #force: yes
+
+    - name: untar nexus.tar.gz file
+      unarchive:
+        remote_src: yes
+        src: /home/nexus/app/nexus.tar.gz
+        dest: /home/nexus/app/
+
+    - name: Rename the untared file to nexus
+      become: true
+      command: mv /home/nexus/app/nexus-3.61.0-02 /home/nexus/app/nexus
+
+    - name: change owner of /app/nexus
+      file:
+        path: /home/nexus/app
+        state: directory
+        recurse: yes
+        owner: nexus
+        group: nexus
+
+    - name: uncomment line
+      lineinfile:
+        path: /home/nexus/app/nexus/bin/nexus.rc
+        search_string: '#run_as_user=""'
+        line: run_as_user="nexus"
+
+    - name: change nexus data path
+      lineinfile:
+        path: /home/nexus/app/nexus/bin/nexus.vmoptions
+        search_string: '-Dkaraf.data=../sonatype-work/nexus3'
+        line: -Dkaraf.data=../nexus/nexus-data
+
+    - name: create nexus service file
+      file:
+        path: /etc/systemd/system/nexus.service
+        state: touch
+        owner: nexus
+        group: nexus
+
+    - name: Add configuration to nexus service file
+      blockinfile:
+        path: /etc/systemd/system/nexus.service
+        block: |
+          [Unit]
+          Description=nexus service
+          After=network.target
+
+          [Service]
+          Type=forking
+          LimitNOFILE=65536
+          User=nexus
+          Group=nexus
+          ExecStart=/home/nexus/app/nexus/bin/nexus start
+          ExecStop=/home/nexus//app/nexus/bin/nexus stop
+          Restart=on-abort
+
+          [Install]
+          WantedBy=multi-user.target
+
+
+    - name: start and enable nexus.service
+      service:
+        name: nexus
+        state: started
+        enabled: yes
+
+
+    - name: Wait for the website to become available
+      wait_for:
+        host: 3.251.89.169
+        port: 8081
+        state: started
+        delay: 5
+        timeout: 60
+
+    - name: navigate to nexus website to initiliza admin.password file.
+      uri:
+        url: http://3.251.89.169:8081/
+      register: result
+      retries: 5
+      delay: 5
+
+    - name: cat initial password for nexus
+      command: cat /home/nexus/app/nexus/nexus-data/admin.password
+      register: initial_password
+      until: result.status==200
+
+    - name: print initial password for nexus
+      debug:
+        var: initial_password.stdout
