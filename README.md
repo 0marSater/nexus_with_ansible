@@ -70,8 +70,7 @@ CMD ["/bin/bash"]
 2. `docker run -it -d <imageName>`                             : create container of that image 
 3. `docker exec -it <containerID> bash`                        : enter to the container
 4. `git clone <repoURL> `                                      : clone the repo
-5. `ansible-playbook -i  <inventoryFileName> --private-key <privateKeyFileName> <configurationFileName.yaml> --ask-become-pass` : to run Ansible playbook.
-   > Use `--ask-become-pass` to input the password for the user you've created and connected to on your EC2 instance. This password is required for elevated privileges during the Ansible playbook execution
+5. `ansible-playbook -i  <inventoryFileName> --private-key <privateKeyFileName> <configurationFileName.yaml> ` : to run Ansible playbook.
 
 
 
