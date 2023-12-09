@@ -1,10 +1,11 @@
-- hosts: nexus
-  remote_user: sater
+- hosts: nexus-server
+  remote_user: ubuntu
   become: yes
   tasks:
     - name: update apt repo
       apt:
         update_cache: yes
+        cache_valid_time: 3600
 
     - name: install wget
       apt:
@@ -28,22 +29,34 @@
         path: /home/nexus/app
         state: directory
 
-
     - name: downlaod nexus tar file
       get_url:
         url: https://download.sonatype.com/nexus/3/latest-unix.tar.gz
-        dest: /home/nexus/app/nexus.tar.gz
-          #force: yes
+        dest: /home/nexus/app/
+      register: download_path                                                       # Dynamically capture the version of "latest" nexus.
 
     - name: untar nexus.tar.gz file
       unarchive:
         remote_src: yes
-        src: /home/nexus/app/nexus.tar.gz
+        src: "{{ download_path.dest }}"                                             # Untar the version.
         dest: /home/nexus/app/
+
+    - name: find path of nexus
+      find:
+        paths: /home/nexus/app/
+        patterns: 'nexus-*'
+        file_type: directory
+      register: find_result
+
+    - name: check nexus folder exist
+      stat:
+        path: /home/nexus/app/nexus
+      register: stat_result
 
     - name: Rename the untared file to nexus
       become: true
-      command: mv /home/nexus/app/nexus-3.61.0-02 /home/nexus/app/nexus
+      shell: mv {{ find_result.files[0].path }} /home/nexus/app/nexus
+      when: not stat_result.stat.exists
 
     - name: change owner of /app/nexus
       file:
@@ -56,13 +69,13 @@
     - name: uncomment line
       lineinfile:
         path: /home/nexus/app/nexus/bin/nexus.rc
-        search_string: '#run_as_user=""'
+        regexp: '^#run_as_user=""'
         line: run_as_user="nexus"
 
     - name: change nexus data path
       lineinfile:
         path: /home/nexus/app/nexus/bin/nexus.vmoptions
-        search_string: '-Dkaraf.data=../sonatype-work/nexus3'
+        regexp: '-Dkaraf.data=../sonatype-work/nexus3'
         line: -Dkaraf.data=../nexus/nexus-data
 
     - name: create nexus service file
@@ -92,17 +105,22 @@
           [Install]
           WantedBy=multi-user.target
 
-
     - name: start and enable nexus.service
       service:
         name: nexus
         state: started
         enabled: yes
 
+    - name: find remote server public ip
+      uri:
+        url: http://ifconfig.me/ip
+        return_content: yes
+      register: ip_response
+
 
     - name: Wait for the website to become available
       wait_for:
-        host: 3.251.89.169
+        host: "{{ ip_response.content }}"
         port: 8081
         state: started
         delay: 5
@@ -110,7 +128,7 @@
 
     - name: navigate to nexus website to initiliza admin.password file.
       uri:
-        url: http://3.251.89.169:8081/
+        url: http://{{ ip_response.content }}:8081/
       register: result
       retries: 5
       delay: 5
