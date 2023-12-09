@@ -9,6 +9,8 @@ RUN apt-get update && \
     sudo \
     systemd \
     systemd-sysv \
+    vim \
+    nano \
     ansible 
 
 
